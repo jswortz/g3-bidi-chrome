@@ -7,11 +7,16 @@ let nextAudioPlayTime = 0;
 let activeAudioNodes = [];
 let screenCaptureInterval = null;
 
-const statusLog = document.getElementById('status');
+const statusLog = document.getElementById('status-logs');
 const connectBtn = document.getElementById('connect-btn');
 const micBtn = document.getElementById('mic-btn');
 const screenBtn = document.getElementById('screen-btn');
 const apiKeyInput = document.getElementById('api-key');
+const micStatusDot = document.getElementById('mic-status-dot');
+const screenStatusDot = document.getElementById('screen-status-dot');
+const connStatusDot = document.getElementById('conn-status-dot');
+
+let currentModelMessageEl = null;
 
 function log(msg) {
   statusLog.innerHTML += msg + '\n';
@@ -48,6 +53,7 @@ connectBtn.addEventListener('click', () => {
   ws.onopen = async () => {
     log('Connected to Gemini Live API.');
     connectBtn.innerText = 'Disconnect';
+    connStatusDot.classList.add('active');
     
     // Setup Audio Context for output
     if (!audioContextOut) {
@@ -57,12 +63,44 @@ connectBtn.addEventListener('click', () => {
     // Send Setup Message
     const setupMessage = {
       setup: {
-        model: "models/gemini-3.1-flash-live-preview",
-        generationConfig: {
-          responseModalities: ["AUDIO"]
-        }
+        model: "models/gemini-3.1-flash-live-preview", 
+        generation_config: {
+          response_modalities: ["AUDIO"],
+          speech_config: {
+            voice_config: {
+              prebuilt_voice_config: {
+                voice_name: document.getElementById('voice-select').value
+              }
+            }
+          }
+        },
+        // Copilot Capabilities: URL Context, Search, Maps, and Navigation
+        tools: [
+          { urlContext: {} },
+          { googleSearch: {} },
+          { googleMaps: {} },
+          {
+            functionDeclarations: [
+              {
+                name: "navigateTo",
+                description: "Navigates the current tab to a specified URL.",
+                parameters: {
+                  type: "OBJECT",
+                  properties: {
+                    url: {
+                      type: "STRING",
+                      description: "The URL to navigate to."
+                    }
+                  },
+                  required: ["url"]
+                }
+              }
+            ]
+          }
+        ]
       }
     };
+    log('Sending setup message...');
     ws.send(JSON.stringify(setupMessage));
     
     micBtn.disabled = false;
@@ -70,12 +108,61 @@ connectBtn.addEventListener('click', () => {
   };
 
   ws.onmessage = async (evt) => {
-    const data = JSON.parse(await evt.data.text ? await evt.data.text() : evt.data);
+    let text;
+    try {
+      if (evt.data instanceof Blob) {
+        text = await evt.data.text();
+      } else {
+        text = evt.data;
+      }
+    } catch (e) {
+      console.error("Error reading message:", e);
+      return;
+    }
+
+    const data = JSON.parse(text);
+    console.log('Received:', data);
+
+    if (data.setupComplete) {
+      log('Setup Complete.');
+    }
     
+    if (data.error) {
+      log('Server Error: ' + data.error.message);
+      console.error("Server Error:", data.error);
+    }
+
+    // Handle Copilot Tool Calls (e.g., Navigation)
+    if (data.toolCall) {
+      const functionCalls = data.toolCall.functionCalls;
+      for (const call of functionCalls) {
+        if (call.name === "navigateTo") {
+          const url = call.args.url;
+          log(`[ToolCall] Navigating to: ${url}`);
+          
+          chrome.tabs.update({ url: url }, (tab) => {
+            const responseMessage = {
+              toolResponse: {
+                functionResponses: [
+                  {
+                    response: { output: `Successfully navigated to ${url}` },
+                    id: call.id
+                  }
+                ]
+              }
+            };
+            ws.send(JSON.stringify(responseMessage));
+            log(`[ToolResponse] Sent success for ${call.id}`);
+          });
+        }
+      }
+    }
+
     if (data.serverContent) {
       if (data.serverContent.interrupted) {
         log('--- Interrupted by User Speech ---');
         stopAllAudio();
+        currentModelMessageEl = null;
       }
 
       if (data.serverContent.modelTurn) {
@@ -85,20 +172,18 @@ connectBtn.addEventListener('click', () => {
             playAudioChunk(part.inlineData.data);
           }
           if (part.text) {
-            log('Gemini: ' + part.text);
+            // Chat transcript dropped as requested.
+            // The model's response is delivered via audio.
           }
         }
       } 
-      
-      if (data.serverContent.turnComplete) {
-         // turn complete
-      }
     }
   };
 
-  ws.onclose = () => {
-    log('Connection Closed.');
+  ws.onclose = (e) => {
+    log(`Connection Closed. Code: ${e.code}, Reason: ${e.reason || 'No reason provided'}`);
     connectBtn.innerText = 'Connect connection';
+    connStatusDot.classList.remove('active');
     micBtn.disabled = true;
     screenBtn.disabled = true;
     stopAllAudio();
@@ -160,6 +245,8 @@ function playAudioChunk(base64) {
 }
 
 // Microphone Capture
+let isWorkletLoaded = false;
+
 micBtn.addEventListener('click', async () => {
   if (micStream) {
     stopMic();
@@ -168,12 +255,24 @@ micBtn.addEventListener('click', async () => {
   
   log('Requesting Mic...');
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
+    // Check permission status first (optional but helpful for debugging)
+    if (navigator.permissions && navigator.permissions.query) {
+      const status = await navigator.permissions.query({ name: 'microphone' });
+      log('Current Mic Permission Status: ' + status.state);
+    }
+
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     
     if (!audioContextIn) {
       audioContextIn = new AudioContext({ sampleRate: 16000 });
     }
-    await audioContextIn.audioWorklet.addModule('recorder-worklet.js');
+    await audioContextIn.resume();
+
+    if (!isWorkletLoaded) {
+      log('Loading audio worklet...');
+      await audioContextIn.audioWorklet.addModule('recorder-worklet.js');
+      isWorkletLoaded = true;
+    }
     
     const source = audioContextIn.createMediaStreamSource(micStream);
     const processor = new AudioWorkletNode(audioContextIn, 'recorder-worklet');
@@ -193,19 +292,26 @@ micBtn.addEventListener('click', async () => {
         
         ws.send(JSON.stringify({
           realtimeInput: {
-            mediaChunks: [{
+            audio: {
               mimeType: 'audio/pcm;rate=16000',
               data: b64
-            }]
+            }
           }
         }));
       }
     };
     log('Mic active.');
-    micBtn.innerText = '🛑 Stop Mic';
+    micBtn.innerText = 'Stop Microphone';
     micBtn.classList.add('active');
+    micStatusDot.classList.add('active');
   } catch (err) {
-    log('Mic Error: ' + err.message);
+    log('Mic Error: ' + err.name + ' - ' + err.message);
+    if (err.name === 'NotAllowedError' || err.message.includes('dismissed') || err.message.includes('denied')) {
+      log('Try granting permission in the extension options page.');
+      if (confirm('Microphone permission dismissed/denied. Open options page to grant access?')) {
+        chrome.runtime.openOptionsPage();
+      }
+    }
   }
 });
 
@@ -214,8 +320,9 @@ function stopMic() {
     micStream.getTracks().forEach(t => t.stop());
     micStream = null;
     log('Mic stopped.');
-    micBtn.innerText = '🎤 Enable Mic';
+    micBtn.innerText = 'Enable Microphone';
     micBtn.classList.remove('active');
+    micStatusDot.classList.remove('active');
   }
 }
 
@@ -238,7 +345,6 @@ screenBtn.addEventListener('click', async () => {
     const ctx = canvas.getContext('2d');
     
     video.onloadedmetadata = () => {
-      // Downscale for performance
       canvas.width = Math.floor(video.videoWidth / 2);
       canvas.height = Math.floor(video.videoHeight / 2);
     };
@@ -249,20 +355,21 @@ screenBtn.addEventListener('click', async () => {
         const b64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
         ws.send(JSON.stringify({
           realtimeInput: {
-            mediaChunks: [{
+            video: {
               mimeType: 'image/jpeg',
               data: b64
-            }]
+            }
           }
         }));
       }
-    }, 1000); // 1 FPS Server limit or general best practice
+    }, 1000);
     
     screenStream.getVideoTracks()[0].onended = stopScreen;
     
     log('Screen share active.');
     screenBtn.innerText = '🛑 Stop Screen Share';
     screenBtn.classList.add('active');
+    screenStatusDot.classList.add('active');
   } catch (err) {
     log('Screen Error: ' + err.message);
   }
@@ -280,4 +387,5 @@ function stopScreen() {
   log('Screen share stopped.');
   screenBtn.innerText = '🖥️ Start Screen Share';
   screenBtn.classList.remove('active');
+  screenStatusDot.classList.remove('active');
 }

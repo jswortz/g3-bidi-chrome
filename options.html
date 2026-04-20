@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Gemini 3 Live Permissions</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .success { color: green; display: none; }
+    .error { color: red; display: none; }
+  </style>
+</head>
+<body>
+  <h1>Microphone Permission</h1>
+  <p>This page is used to request microphone permissions for the Gemini Live extension.</p>
+  <button id="request-btn">Allow Microphone Access</button>
+  <div id="success-msg" class="success">Microphone access granted! You can now close this tab and use the side panel.</div>
+  <div id="error-msg" class="error">Microphone access denied or dismissed. Please try again or check your browser settings.</div>
+  <script src="options.js"></script>
+</body>
+</html>
