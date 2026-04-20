@@ -57,12 +57,13 @@ connectBtn.addEventListener('click', () => {
     // Send Setup Message
     const setupMessage = {
       setup: {
-        model: "models/gemini-3.1-flash-live-preview",
-        generationConfig: {
-          responseModalities: ["AUDIO"]
+        model: "models/gemini-3.1-flash-live-preview", 
+        generation_config: {
+          response_modalities: ["AUDIO"]
         }
       }
     };
+    log('Sending setup message...');
     ws.send(JSON.stringify(setupMessage));
     
     micBtn.disabled = false;
@@ -70,8 +71,30 @@ connectBtn.addEventListener('click', () => {
   };
 
   ws.onmessage = async (evt) => {
-    const data = JSON.parse(await evt.data.text ? await evt.data.text() : evt.data);
+    let text;
+    try {
+      if (evt.data instanceof Blob) {
+        text = await evt.data.text();
+      } else {
+        text = evt.data;
+      }
+    } catch (e) {
+      console.error("Error reading message:", e);
+      return;
+    }
+
+    const data = JSON.parse(text);
+    console.log('Received:', data);
+
+    if (data.setupComplete) {
+      log('Setup Complete.');
+    }
     
+    if (data.error) {
+      log('Server Error: ' + data.error.message);
+      console.error("Server Error:", data.error);
+    }
+
     if (data.serverContent) {
       if (data.serverContent.interrupted) {
         log('--- Interrupted by User Speech ---');
@@ -89,15 +112,11 @@ connectBtn.addEventListener('click', () => {
           }
         }
       } 
-      
-      if (data.serverContent.turnComplete) {
-         // turn complete
-      }
     }
   };
 
-  ws.onclose = () => {
-    log('Connection Closed.');
+  ws.onclose = (e) => {
+    log(`Connection Closed. Code: ${e.code}, Reason: ${e.reason || 'No reason provided'}`);
     connectBtn.innerText = 'Connect connection';
     micBtn.disabled = true;
     screenBtn.disabled = true;
@@ -160,6 +179,8 @@ function playAudioChunk(base64) {
 }
 
 // Microphone Capture
+let isWorkletLoaded = false;
+
 micBtn.addEventListener('click', async () => {
   if (micStream) {
     stopMic();
@@ -168,12 +189,24 @@ micBtn.addEventListener('click', async () => {
   
   log('Requesting Mic...');
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
+    // Check permission status first (optional but helpful for debugging)
+    if (navigator.permissions && navigator.permissions.query) {
+      const status = await navigator.permissions.query({ name: 'microphone' });
+      log('Current Mic Permission Status: ' + status.state);
+    }
+
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     
     if (!audioContextIn) {
       audioContextIn = new AudioContext({ sampleRate: 16000 });
     }
-    await audioContextIn.audioWorklet.addModule('recorder-worklet.js');
+    await audioContextIn.resume();
+
+    if (!isWorkletLoaded) {
+      log('Loading audio worklet...');
+      await audioContextIn.audioWorklet.addModule('recorder-worklet.js');
+      isWorkletLoaded = true;
+    }
     
     const source = audioContextIn.createMediaStreamSource(micStream);
     const processor = new AudioWorkletNode(audioContextIn, 'recorder-worklet');
@@ -193,19 +226,25 @@ micBtn.addEventListener('click', async () => {
         
         ws.send(JSON.stringify({
           realtimeInput: {
-            mediaChunks: [{
+            audio: {
               mimeType: 'audio/pcm;rate=16000',
               data: b64
-            }]
+            }
           }
         }));
       }
     };
     log('Mic active.');
-    micBtn.innerText = '🛑 Stop Mic';
+    micBtn.innerText = 'Stop Microphone';
     micBtn.classList.add('active');
   } catch (err) {
-    log('Mic Error: ' + err.message);
+    log('Mic Error: ' + err.name + ' - ' + err.message);
+    if (err.name === 'NotAllowedError' || err.message.includes('dismissed') || err.message.includes('denied')) {
+      log('Try granting permission in the extension options page.');
+      if (confirm('Microphone permission dismissed/denied. Open options page to grant access?')) {
+        chrome.runtime.openOptionsPage();
+      }
+    }
   }
 });
 
@@ -214,7 +253,7 @@ function stopMic() {
     micStream.getTracks().forEach(t => t.stop());
     micStream = null;
     log('Mic stopped.');
-    micBtn.innerText = '🎤 Enable Mic';
+    micBtn.innerText = 'Enable Microphone';
     micBtn.classList.remove('active');
   }
 }
@@ -249,10 +288,10 @@ screenBtn.addEventListener('click', async () => {
         const b64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
         ws.send(JSON.stringify({
           realtimeInput: {
-            mediaChunks: [{
+            video: {
               mimeType: 'image/jpeg',
               data: b64
-            }]
+            }
           }
         }));
       }

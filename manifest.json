@@ -5,10 +5,11 @@
   "description": "Stream microphone and screen to Gemini 3.1 Flash Live Preview via WebSockets natively.",
   "permissions": [
     "storage",
-    "sidePanel"
+    "sidePanel",
+    "audioCapture"
   ],
   "host_permissions": [
-    "wss://generativelanguage.googleapis.com/*"
+    "https://generativelanguage.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -18,5 +19,6 @@
   },
   "side_panel": {
     "default_path": "panel.html"
-  }
+  },
+  "options_page": "options.html"
 }
