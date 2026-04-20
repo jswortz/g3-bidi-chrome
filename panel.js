@@ -74,6 +74,11 @@ connectBtn.addEventListener('click', () => {
             }
           }
         },
+        systemInstruction: {
+          parts: [
+            { text: "You are a helpful browser copilot. You can navigate to URLs and click on elements. If you are trying to click a button or link and do not know the exact CSS selector, prioritize using the 'clickElementByText' tool with the text you see on the screen. Do not guess complex CSS selectors if you are not sure." }
+          ]
+        },
         // Copilot Capabilities: URL Context, Search, Maps, and Navigation
         tools: [
           { urlContext: {} },
@@ -93,6 +98,34 @@ connectBtn.addEventListener('click', () => {
                     }
                   },
                   required: ["url"]
+                }
+              },
+              {
+                name: "clickElement",
+                description: "Click on an element on the active web page using a CSS selector.",
+                parameters: {
+                  type: "OBJECT",
+                  properties: {
+                    selector: {
+                      type: "STRING",
+                      description: "The CSS selector of the element to click (e.g., '#submit-btn', '.login-link')."
+                    }
+                  },
+                  required: ["selector"]
+                }
+              },
+              {
+                name: "clickElementByText",
+                description: "Click on an element on the active web page that contains specific text.",
+                parameters: {
+                  type: "OBJECT",
+                  properties: {
+                    text: {
+                      type: "STRING",
+                      description: "The exact or partial text of the element to click (e.g., 'Sign In', 'Submit')."
+                    }
+                  },
+                  required: ["text"]
                 }
               }
             ]
@@ -153,6 +186,127 @@ connectBtn.addEventListener('click', () => {
             };
             ws.send(JSON.stringify(responseMessage));
             log(`[ToolResponse] Sent success for ${call.id}`);
+          });
+        } else if (call.name === "clickElement") {
+          const selector = call.args.selector;
+          log(`[ToolCall] Clicking element: ${selector}`);
+          
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]) {
+              chrome.scripting.executeScript({
+                target: { tabId: tabs[0].id },
+                func: (sel) => {
+                  const el = document.querySelector(sel);
+                  if (el) {
+                    el.click();
+                    return `Clicked element matching ${sel}`;
+                  } else {
+                    return `Element not found matching ${sel}`;
+                  }
+                },
+                args: [selector]
+              }, (results) => {
+                let resultStr = "Execution failed";
+                if (chrome.runtime.lastError) {
+                  resultStr = `Error: ${chrome.runtime.lastError.message}`;
+                } else if (results && results[0]) {
+                  resultStr = results[0].result;
+                }
+                log(`[ToolResponse] Click result: ${resultStr}`);
+                
+                const responseMessage = {
+                  toolResponse: {
+                    functionResponses: [
+                      {
+                        response: { output: resultStr },
+                        id: call.id
+                      }
+                    ]
+                  }
+                };
+                ws.send(JSON.stringify(responseMessage));
+                log(`[ToolResponse] Sent response for ${call.id}`);
+              });
+            } else {
+              log("[ToolResponse] No active tab found.");
+              const responseMessage = {
+                toolResponse: {
+                  functionResponses: [
+                    {
+                      response: { output: "No active tab found" },
+                      id: call.id
+                    }
+                  ]
+                }
+              };
+              ws.send(JSON.stringify(responseMessage));
+            }
+          });
+        } else if (call.name === "clickElementByText") {
+          const text = call.args.text;
+          log(`[ToolCall] Clicking element by text: ${text}`);
+          
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]) {
+              chrome.scripting.executeScript({
+                target: { tabId: tabs[0].id },
+                func: (txt) => {
+                  // Search for elements containing the text
+                  // We search for interactive elements first (a, button)
+                  const elements = document.querySelectorAll('a, button, [role="button"]');
+                  for (const el of elements) {
+                    if (el.textContent.toLowerCase().includes(txt.toLowerCase())) {
+                      el.click();
+                      return `Clicked element containing text "${txt}"`;
+                    }
+                  }
+                  // Fallback to any element if no interactive element found
+                  const allElements = document.querySelectorAll('*');
+                  for (const el of allElements) {
+                    if (el.textContent.trim().toLowerCase() === txt.toLowerCase()) {
+                      el.click();
+                      return `Clicked generic element containing text "${txt}"`;
+                    }
+                  }
+                  return `Element not found containing text "${txt}"`;
+                },
+                args: [text]
+              }, (results) => {
+                let resultStr = "Execution failed";
+                if (chrome.runtime.lastError) {
+                  resultStr = `Error: ${chrome.runtime.lastError.message}`;
+                } else if (results && results[0]) {
+                  resultStr = results[0].result;
+                }
+                log(`[ToolResponse] Click result: ${resultStr}`);
+                
+                const responseMessage = {
+                  toolResponse: {
+                    functionResponses: [
+                      {
+                        response: { output: resultStr },
+                        id: call.id
+                      }
+                    ]
+                  }
+                };
+                ws.send(JSON.stringify(responseMessage));
+                log(`[ToolResponse] Sent response for ${call.id}`);
+              });
+            } else {
+              log("[ToolResponse] No active tab found.");
+              const responseMessage = {
+                toolResponse: {
+                  functionResponses: [
+                    {
+                      response: { output: "No active tab found" },
+                      id: call.id
+                    }
+                  ]
+                }
+              };
+              ws.send(JSON.stringify(responseMessage));
+            }
           });
         }
       }
