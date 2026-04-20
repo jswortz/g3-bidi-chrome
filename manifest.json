@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Gemini 3 Live Bidi extension",
+  "version": "1.0.0",
+  "description": "Stream microphone and screen to Gemini 3.1 Flash Live Preview via WebSockets natively.",
+  "permissions": [
+    "storage",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "wss://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open Gemini 3 Live Panel"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  }
+}

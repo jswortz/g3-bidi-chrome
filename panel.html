@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: sans-serif; padding: 12px; margin: 0; display: flex; flex-direction: column; gap: 10px; width: 100vw; box-sizing: border-box;}
+    h2 { font-size: 16px; margin: 0 0 10px 0; }
+    .control-group { border: 1px solid #ccc; padding: 10px; border-radius: 6px; }
+    button { padding: 8px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: white; margin-top: 5px; width: 100%;}
+    button:hover { background: #eee; }
+    button.active { background: #d4edda; border-color: #28a745; }
+    button.danger { background: #f8d7da; border-color: #f5c6cb; }
+    input[type="password"] { padding: 8px; width: calc(100% - 16px); margin-bottom: 5px;}
+    #status { font-size: 12px; color: #666; margin-top: 5px; white-space: pre-wrap; font-family: monospace; max-height: 200px; overflow-y: auto; background: #f5f5f5; padding: 5px;}
+  </style>
+</head>
+<body>
+  <h2>Gemini 3.1 Live API</h2>
+  
+  <div class="control-group">
+    <label>API Key:</label><br>
+    <input type="password" id="api-key" placeholder="Enter Gemini API Key">
+    <button id="save-key-btn">Save Key</button>
+  </div>
+
+  <div class="control-group">
+    <button id="connect-btn">Connect connection</button>
+  </div>
+
+  <div class="control-group">
+    <button id="mic-btn" disabled>🎤 Enable Mic</button>
+    <button id="screen-btn" disabled>🖥️ Start Screen Share</button>
+  </div>
+
+  <div class="control-group">
+    <label>Logs:</label>
+    <div id="status">Disconnected...</div>
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>
