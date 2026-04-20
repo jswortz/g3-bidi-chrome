@@ -1,39 +1,261 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
+  <title>Gemini 3.1 Live Copilot</title>
   <style>
-    body { font-family: sans-serif; padding: 12px; margin: 0; display: flex; flex-direction: column; gap: 10px; width: 100vw; box-sizing: border-box;}
-    h2 { font-size: 16px; margin: 0 0 10px 0; }
-    .control-group { border: 1px solid #ccc; padding: 10px; border-radius: 6px; }
-    button { padding: 8px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: white; margin-top: 5px; width: 100%;}
-    button:hover { background: #eee; }
-    button.active { background: #d4edda; border-color: #28a745; }
-    button.danger { background: #f8d7da; border-color: #f5c6cb; }
-    input[type="password"] { padding: 8px; width: calc(100% - 16px); margin-bottom: 5px;}
-    #status { font-size: 12px; color: #666; margin-top: 5px; white-space: pre-wrap; font-family: monospace; max-height: 200px; overflow-y: auto; background: #f5f5f5; padding: 5px;}
+    :root {
+      --bg-color: #202124;
+      --card-bg: #2D2E30;
+      --text-color: #FFFFFF;
+      --text-secondary: #9AA0A6;
+      --google-blue: #8AB4F8;
+      --google-red: #F28B82;
+      --google-yellow: #FDD663;
+      --google-green: #81C995;
+      --border-color: #3C4043;
+      --gradient-blue: linear-gradient(135deg, #8AB4F8 0%, #C58AF9 100%);
+    }
+    body {
+      font-family: 'Google Sans', 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 16px;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      box-sizing: border-box;
+      height: 100vh;
+      overflow-x: hidden;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 12px;
+    }
+    .branding {
+      display: flex;
+      flex-direction: column;
+    }
+    .branding .title {
+      font-size: 18px;
+      font-weight: 500;
+      background: var(--gradient-blue);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .card {
+      background: var(--card-bg);
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 4px;
+    }
+    label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    select, input[type="password"] {
+      padding: 12px;
+      background-color: #3C4043;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--text-color);
+      width: 100%;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    select:focus, input[type="password"]:focus {
+      border-color: var(--google-blue);
+    }
+    button {
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    .btn-primary {
+      background: var(--gradient-blue);
+      color: #202124;
+      font-weight: 700;
+    }
+    .btn-primary:hover {
+      opacity: 0.9;
+    }
+    .btn-outline {
+      background-color: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--google-blue);
+    }
+    .btn-outline:hover {
+      background-color: rgba(138, 180, 248, 0.08);
+      border-color: var(--google-blue);
+    }
+    .status-bar {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-around;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background-color: rgba(60, 64, 67, 0.3);
+    }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--google-red);
+      display: inline-block;
+      box-shadow: 0 0 4px var(--google-red);
+      transition: background-color 0.3s, box-shadow 0.3s;
+    }
+    .status-dot.active {
+      background-color: var(--google-green);
+      box-shadow: 0 0 6px var(--google-green);
+    }
+    
+    /* Capabilities List - Premium Styling */
+    .capabilities-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .capabilities-list li {
+      background-color: rgba(255, 255, 255, 0.03);
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 13px;
+      line-height: 1.4;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .capabilities-list li::before {
+      content: "✦";
+      color: var(--google-blue);
+      font-weight: bold;
+      margin-top: 1px;
+    }
+    .capabilities-list strong {
+      color: var(--google-blue);
+      font-weight: 500;
+    }
+    
+    /* Session Logs - Cleaner Typography */
+    #status-logs {
+      font-size: 11px;
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      font-family: 'Roboto Mono', 'Courier New', monospace;
+      flex: 1;
+      min-height: 150px;
+      overflow-y: auto;
+      background: #1A1A1A;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
-  <h2>Gemini 3.1 Live API</h2>
-  
-  <div class="control-group">
-    <label>API Key:</label><br>
+  <div class="header">
+    <div class="branding">
+      <span class="title">Gemini 3.1 Live Copilot</span>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="card status-bar">
+    <div class="status-indicator" title="Microphone Status">
+      <span class="status-dot" id="mic-status-dot"></span>
+      <span>Mic</span>
+    </div>
+    <div class="status-indicator" title="Screen Share Status">
+      <span class="status-dot" id="screen-status-dot"></span>
+      <span>Screen</span>
+    </div>
+    <div class="status-indicator" title="API Connection Status">
+      <span class="status-dot" id="conn-status-dot"></span>
+      <span>API</span>
+    </div>
+  </div>
+
+  <!-- Capabilities Card -->
+  <div class="card">
+    <div class="card-title">Copilot Capabilities</div>
+    <ul class="capabilities-list">
+      <li><span><strong>Voice Interaction</strong><br>Bidirectional real-time audio.</span></li>
+      <li><span><strong>Screen Analysis</strong><br>Shares your screen at 1 FPS for context.</span></li>
+      <li><span><strong>Google Search Grounding</strong><br>Answers grounded with live web search.</span></li>
+      <li><span><strong>Google Maps Grounding</strong><br>Location and mapping intelligence enabled.</span></li>
+      <li><span><strong>Page Navigation</strong><br>Ask the agent to navigate to URLs for you.</span></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Configuration</div>
+    <label for="voice-select">Voice Agent</label>
+    <select id="voice-select">
+      <option value="Aoede">Aoede (Default)</option>
+      <option value="Charon">Charon</option>
+      <option value="Fenrir">Fenrir</option>
+      <option value="Kore">Kore</option>
+      <option value="Puck">Puck</option>
+    </select>
+    
+    <label for="api-key">API Key</label>
     <input type="password" id="api-key" placeholder="Enter Gemini API Key">
-    <button id="save-key-btn">Save Key</button>
+    <button id="save-key-btn" class="btn-outline">Save Key</button>
   </div>
 
-  <div class="control-group">
-    <button id="connect-btn">Connect connection</button>
+  <div class="card">
+    <div class="card-title">Controls</div>
+    <button id="connect-btn" class="btn-primary">Connect</button>
+    <button id="mic-btn" class="btn-outline" disabled>Enable Microphone</button>
+    <button id="screen-btn" class="btn-outline" disabled>Start Screen Share</button>
   </div>
 
-  <div class="control-group">
-    <button id="mic-btn" disabled>Enable Microphone</button>
-    <button id="screen-btn" disabled>Start Screen Share</button>
-  </div>
-
-  <div class="control-group">
-    <label>Logs:</label>
-    <div id="status">Disconnected...</div>
+  <!-- Session Logs -->
+  <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+    <div class="card-title">Session Logs</div>
+    <div id="status-logs">Disconnected...</div>
   </div>
 
   <script src="panel.js"></script>

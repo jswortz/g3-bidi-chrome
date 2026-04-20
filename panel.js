@@ -7,11 +7,16 @@ let nextAudioPlayTime = 0;
 let activeAudioNodes = [];
 let screenCaptureInterval = null;
 
-const statusLog = document.getElementById('status');
+const statusLog = document.getElementById('status-logs');
 const connectBtn = document.getElementById('connect-btn');
 const micBtn = document.getElementById('mic-btn');
 const screenBtn = document.getElementById('screen-btn');
 const apiKeyInput = document.getElementById('api-key');
+const micStatusDot = document.getElementById('mic-status-dot');
+const screenStatusDot = document.getElementById('screen-status-dot');
+const connStatusDot = document.getElementById('conn-status-dot');
+
+let currentModelMessageEl = null;
 
 function log(msg) {
   statusLog.innerHTML += msg + '\n';
@@ -48,6 +53,7 @@ connectBtn.addEventListener('click', () => {
   ws.onopen = async () => {
     log('Connected to Gemini Live API.');
     connectBtn.innerText = 'Disconnect';
+    connStatusDot.classList.add('active');
     
     // Setup Audio Context for output
     if (!audioContextOut) {
@@ -59,8 +65,39 @@ connectBtn.addEventListener('click', () => {
       setup: {
         model: "models/gemini-3.1-flash-live-preview", 
         generation_config: {
-          response_modalities: ["AUDIO"]
-        }
+          response_modalities: ["AUDIO"],
+          speech_config: {
+            voice_config: {
+              prebuilt_voice_config: {
+                voice_name: document.getElementById('voice-select').value
+              }
+            }
+          }
+        },
+        // Copilot Capabilities: URL Context, Search, Maps, and Navigation
+        tools: [
+          { urlContext: {} },
+          { googleSearch: {} },
+          { googleMaps: {} },
+          {
+            functionDeclarations: [
+              {
+                name: "navigateTo",
+                description: "Navigates the current tab to a specified URL.",
+                parameters: {
+                  type: "OBJECT",
+                  properties: {
+                    url: {
+                      type: "STRING",
+                      description: "The URL to navigate to."
+                    }
+                  },
+                  required: ["url"]
+                }
+              }
+            ]
+          }
+        ]
       }
     };
     log('Sending setup message...');
@@ -95,10 +132,37 @@ connectBtn.addEventListener('click', () => {
       console.error("Server Error:", data.error);
     }
 
+    // Handle Copilot Tool Calls (e.g., Navigation)
+    if (data.toolCall) {
+      const functionCalls = data.toolCall.functionCalls;
+      for (const call of functionCalls) {
+        if (call.name === "navigateTo") {
+          const url = call.args.url;
+          log(`[ToolCall] Navigating to: ${url}`);
+          
+          chrome.tabs.update({ url: url }, (tab) => {
+            const responseMessage = {
+              toolResponse: {
+                functionResponses: [
+                  {
+                    response: { output: `Successfully navigated to ${url}` },
+                    id: call.id
+                  }
+                ]
+              }
+            };
+            ws.send(JSON.stringify(responseMessage));
+            log(`[ToolResponse] Sent success for ${call.id}`);
+          });
+        }
+      }
+    }
+
     if (data.serverContent) {
       if (data.serverContent.interrupted) {
         log('--- Interrupted by User Speech ---');
         stopAllAudio();
+        currentModelMessageEl = null;
       }
 
       if (data.serverContent.modelTurn) {
@@ -108,7 +172,8 @@ connectBtn.addEventListener('click', () => {
             playAudioChunk(part.inlineData.data);
           }
           if (part.text) {
-            log('Gemini: ' + part.text);
+            // Chat transcript dropped as requested.
+            // The model's response is delivered via audio.
           }
         }
       } 
@@ -118,6 +183,7 @@ connectBtn.addEventListener('click', () => {
   ws.onclose = (e) => {
     log(`Connection Closed. Code: ${e.code}, Reason: ${e.reason || 'No reason provided'}`);
     connectBtn.innerText = 'Connect connection';
+    connStatusDot.classList.remove('active');
     micBtn.disabled = true;
     screenBtn.disabled = true;
     stopAllAudio();
@@ -237,6 +303,7 @@ micBtn.addEventListener('click', async () => {
     log('Mic active.');
     micBtn.innerText = 'Stop Microphone';
     micBtn.classList.add('active');
+    micStatusDot.classList.add('active');
   } catch (err) {
     log('Mic Error: ' + err.name + ' - ' + err.message);
     if (err.name === 'NotAllowedError' || err.message.includes('dismissed') || err.message.includes('denied')) {
@@ -255,6 +322,7 @@ function stopMic() {
     log('Mic stopped.');
     micBtn.innerText = 'Enable Microphone';
     micBtn.classList.remove('active');
+    micStatusDot.classList.remove('active');
   }
 }
 
@@ -277,7 +345,6 @@ screenBtn.addEventListener('click', async () => {
     const ctx = canvas.getContext('2d');
     
     video.onloadedmetadata = () => {
-      // Downscale for performance
       canvas.width = Math.floor(video.videoWidth / 2);
       canvas.height = Math.floor(video.videoHeight / 2);
     };
@@ -295,13 +362,14 @@ screenBtn.addEventListener('click', async () => {
           }
         }));
       }
-    }, 1000); // 1 FPS Server limit or general best practice
+    }, 1000);
     
     screenStream.getVideoTracks()[0].onended = stopScreen;
     
     log('Screen share active.');
     screenBtn.innerText = '🛑 Stop Screen Share';
     screenBtn.classList.add('active');
+    screenStatusDot.classList.add('active');
   } catch (err) {
     log('Screen Error: ' + err.message);
   }
@@ -319,4 +387,5 @@ function stopScreen() {
   log('Screen share stopped.');
   screenBtn.innerText = '🖥️ Start Screen Share';
   screenBtn.classList.remove('active');
+  screenStatusDot.classList.remove('active');
 }
